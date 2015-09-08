@@ -1,1 +1,342 @@
-Hello World
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Untitled</title>
+        <!-- <link rel="stylesheet" href="css/style.css"> -->
+        <link rel="author" href="humans.txt">
+        <link rel="shortcut icon" href="icon.jpg">
+        <style type="text/css">
+        	canvas{
+        		border: 1px solid black;
+
+        	}
+            #container{
+                text-align:  center;
+                display: block;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="container">
+    	<canvas id="canvas" width='400' height='400'></canvas>
+    </div>
+       	<script type="text/javascript">
+
+    //  Variables 
+    var  canvas = document.getElementById('canvas');
+    var ctx = canvas.getContext('2d');
+    var width =    window.innerHeight //window.innerHeight * .666;
+    canvas.width =  width;
+    canvas.height = 500;
+    var screenSize = canvas.width;
+    var screenWidth = canvas.width;
+    var screenHeight = canvas.height;
+    var centreX = screenWidth/2; // 
+    var centreY = screenHeight/2;
+    var numberOfDots = 10;
+    var focalLength = 400;
+    var delta = 20;
+    var dotArray = [];
+    var offScreenDots = [];
+    var viewerZ = 0;
+    var checkBox = document.getElementById('myBox');
+    var speedBox = document.getElementById('speedBox');
+    var interval;
+    var stepCount = 0;
+    var initialClick =false;
+    var intervals = [];
+
+    var started = false;
+    var clicked = false;
+    var startX;
+    var startY;
+    var maxX = 750;
+    var minX = 380;
+
+
+
+    /*
+             DOTS
+    */
+
+    function Dot(){
+        this.x = Math.random() * screenWidth;
+        this.z = (Math.random() * 1000) +5000;
+        this.y = Math.random() * screenHeight/2;
+        this.size = 20;
+        this.color = randomColor();
+        this.isOffScreen = false;
+        this.drawSpecial = false;
+    }
+
+
+    Dot.prototype.resetPos = function(){
+        this.x = Math.random() * screenSize;
+        this.z = (Math.random() * 1000) + 5000;
+        this.y = Math.random() * screenSize/2;     
+    }
+
+    Dot.prototype.draw = function(){
+      
+        var scale    = this.scale( focalLength );
+        var ballSize = this.size * scale;
+        var xScaled  = this.x * scale;
+       
+        var dotX = centreX + ( ( centreX - this.x ) * scale );
+        var dotY = centreY + ( ( canvas.width / 6 ) * scale ) - ( this.y * scale );
+
+        if(xScaled > 0 && dotX < canvas.width && ballSize > 1.5 ){ // check bounds on screen
+            ctx.beginPath();
+            ctx.arc( dotX, dotY, ballSize, 2 * Math.PI, false );
+            ctx.fillStyle = this.color;
+            ctx.fill();
+            if(this.drawSpecial){
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+        }
+        else if(this.isOffScreenZ()  ){
+
+            offScreenDots.push(this);
+            this.resetPos();    
+
+            dotArray.sort( function(a,b) {
+                 var az = a.z;
+                 return b.z - a.z;
+            });
+        }
+    }
+
+    Dot.prototype.isOffScreenZ = function(){
+        return this.z < viewerZ || this.z < 0;
+    }
+
+    Dot.prototype.scale = function(fl){
+        return fl / (fl + (this.z-viewerZ)); 
+    }
+
+    Dot.prototype.scaledX = function(){
+        return this.scale(focalLength) * this.x;
+    }
+
+    Dot.prototype.isClicked = function(x, y){
+        var scale = this.scale(focalLength);
+        var newX = centreX - (( x - centreX  ) / scale);
+        var newY =  ( centreY + ( ( canvas.width /6) * scale ) - y ) / scale;
+
+        var dx = Math.abs(newX - this.x);
+        var dy = Math.abs(newY - this.y);
+        if(dx > this.size ){
+            return false;
+        }
+        if(dy > this.size){
+            return false;
+        }   
+   
+        return true;
+    }
+
+    Dot.prototype.reverseScale = function(x, y){
+        var newX = centreX - (( x - centreX  ) / this.scale(focalLength));
+        var newY =  ( centreY + ( ( canvas.width /6) * scale ) - y ) / scale;
+        return newX;
+    }
+
+    /* 
+     *  Global Functions
+     *   
+     *
+     */
+
+
+    function printZValues(){
+        for(var i = 0; i<dotArray.length; i++){
+            console.log("z: " + dotArray[i].z +" x: " +dotArray[i].x  + " xScale: " + dotArray[i].scaledX());
+        }
+    }
+
+    function clickOnDot(x, y){
+        for(var i = 0; i < dotArray.length; i++){
+            if(dotArray[i].isClicked(x, y)){
+                // console.log("TRUEUEUE");
+            }
+        }
+    }
+
+    function getScale(){
+        var fl = focalLength;
+        return fl / (fl - viewerZ);
+    }
+ 
+    function randomColor(){
+        return "rgb("+  Math.floor(Math.random()*256)+","+
+                        Math.floor(Math.random()*256)+","+
+                        Math.floor(Math.random()*256)+")";
+    }
+
+
+    function finalizeRemovedObjects(){
+        for(var i = 0,len = offScreenDots.length; i<len;i++){
+            var index = dotArray.indexOf(offScreenDots[i]);
+            if(index!=-1){
+                dotArray.splice(index,1);
+                offScreenDots.splice(i, 1);
+            }
+        }
+    }
+
+    function moveEveryDotForward(stepSize){
+        var len = dotArray.length;
+        for( var i =0 ; i<len; i++){
+            dotArray[i].z -= stepSize;
+        }
+    }
+
+
+    function startDrawing(){
+        ctx.clearRect(0, 0, screenWidth,screenHeight);
+        // draw left side of screen
+        var gaps = canvas.height/10;
+        for( var i = 0; i< 10; i++){
+           drawLine(0, gaps*i);
+        }
+        // draw right side of screen
+        for( var i = 0; i  < 10; i++){
+           drawLine(canvas.width, gaps*i);
+        }
+    }
+
+    function drawLine(x , y){
+        // ctx.fillStyle = "red";
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(centreX,centreY);
+        ctx.stroke();
+    }
+
+    function drawDotArray(){
+        var len = dotArray.length;
+        for( var i =0 ; i<len; i++){
+            dotArray[i].draw();
+        }
+    }
+
+    function drawEverything(){
+        startDrawing();
+        drawDotArray(); 
+    }
+
+    function addObjects(){
+        stepCount+=10;
+        if(stepCount> (Math.random() * 400))   {
+            stepCount =0;
+            dotArray.push( new Dot() );
+
+            dotArray.sort(function(a,b) {
+                var az = a.z;
+                return b.z - a.z;
+            });
+        }
+    }
+
+    function restart(){
+        dotArray = [];
+    }
+
+
+    window.addEventListener('keydown', function(evt){
+       
+            if(evt.keyCode==39){
+            centreX-=delta;
+            }
+            if(evt.keyCode==37){
+                centreX+=delta;
+            }
+            if(evt.keyCode==38){
+                 viewerZ+=delta;
+            }
+            if(evt.keyCode==40){
+                viewerZ-=delta;
+            }                
+    });
+
+
+    function setListeners(){
+        if(canvas){
+            document.addEventListener('mousedown', function(evt){
+                // sets mouse move everytime move is pressed
+                document.onmousemove = onMouseMove; 
+                startX = evt.x;
+                startY = evt.y;
+                  // centreX-=delta;
+            });
+             document.addEventListener('mouseup', function(evt){    
+                //       
+                document.onmousemove = null;
+            });
+            window.onresize = updateSize;
+
+        }
+    }
+ 
+    function onMouseMove(evt){
+        var x = (startX - evt.x ) / 10;
+        var y = startY - evt.y;
+        centreX +=x;
+        if(centreX < minX){
+            centreX = minX;
+        }
+        if(centreX > maxX){
+            centreX = maxX;
+        }
+    }
+
+    /**
+     *  Main game loop 
+     */
+    function gameLoop(){
+            moveEveryDotForward(10);
+            addObjects();
+            drawEverything();
+            finalizeRemovedObjects();
+    }
+
+    function updateSize(){
+        canvas.height = window.innerHeight;
+        canvas.width = window.innerWidth;
+        screenSize = canvas.height;
+        screenWidth = canvas.width;
+        screenHeight = canvas.height;
+        centreX = canvas.width/2; // 
+        centreY = canvas.height/2;
+    }
+
+    function init(){
+        updateSize();
+        dotArray = [];
+        var i;
+        for(i = 0; i< 10; i++){
+          dotArray.push(new Dot());
+        }
+        dotArray.sort(function(a,b) {
+            var az = a.z;
+            return b.z - a.z;
+        });
+        viewerZ = 0;
+        drawEverything();
+
+        intervals.push( window.setInterval(function() { gameLoop() }, 20) );
+    }
+    // set up everything
+
+    setListeners();
+    init();
+
+       	 
+	
+       	</script> 
+    </body>
+</html>
